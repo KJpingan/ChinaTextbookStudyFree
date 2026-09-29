@@ -84,7 +84,15 @@ export function ReviewRunnerClient() {
   const reviewMistake = useProgressStore(s => s.reviewMistake);
   const awardReviewXP = useProgressStore(s => s.awardReviewXP);
   const awardReviewHeart = useProgressStore(s => s.awardReviewHeart);
+  const refreshMistakeSnapshots = useProgressStore(s => s.refreshMistakeSnapshots);
   const prefersReduced = useReducedMotion();
+
+  // 从 lessonId 反推 bookId：课程 id 形如 `{bookId}-u{n}-kp{i}` / `{bookId}-u{n}-exam`
+  function deriveBookId(lessonId: string): string | null {
+    const m = lessonId.match(/-(?:u\d+-(?:kp\d+|exam))$/);
+    return m ? lessonId.slice(0, m.index!) : null;
+  }
+  const lessonCacheRef = useRef<Map<string, Question[]>>(new Map());
 
   // ============ 队列：hydrate 后一次性快照（复习中 store 变化不打乱当前会话）============
   const [ready, setReady] = useState(false);
@@ -116,7 +124,54 @@ export function ReviewRunnerClient() {
     totalRef.current = items.length;
     setQueue(items);
     setReady(true);
-  }, [hydrated]);
+
+    // 错题快照可能来自旧题库（含已被修正的错误答案/C选项），
+    // 校验：拉取最新课程数据，若题目已更新则用最新快照覆盖，保证判分正确。
+    (async () => {
+      if (items.length === 0) return;
+      const wanted = new Map<string, Set<number>>(); // lessonId -> questionIds
+      for (const it of items) {
+        if (!wanted.has(it.lessonId)) wanted.set(it.lessonId, new Set());
+        wanted.get(it.lessonId)!.add(it.question.id);
+      }
+      const refreshed = new Map<string, Question>(); // "lessonId:qid" -> fresh
+      for (const [lessonId, qids] of wanted) {
+        const bookId = deriveBookId(lessonId);
+        if (!bookId) continue;
+        let questions = lessonCacheRef.current.get(lessonId);
+        if (!questions) {
+          try {
+            const res = await fetch(`/data/books/${bookId}/lessons/${lessonId}.json`, { cache: "force-cache" });
+            if (!res.ok) continue;
+            const doc = await res.json();
+            questions = Array.isArray(doc.questions) ? doc.questions : [];
+            lessonCacheRef.current.set(lessonId, questions!);
+          } catch {
+            continue;
+          }
+        }
+        if (!questions) continue;
+        for (const qid of qids) {
+          const fresh = questions.find(q => q.id === qid);
+          if (fresh && fresh.answer) refreshed.set(`${lessonId}:${qid}`, fresh);
+        }
+      }
+      if (refreshed.size === 0) return;
+      // 用最新题目覆盖本地快照（持久化，列表页也同步），再更新当前会话队列
+      refreshMistakeSnapshots(
+        [...refreshed].map(([key, q]) => {
+          const [lessonId, qid] = key.split(":");
+          return { lessonId, questionId: Number(qid), question: q };
+        }),
+      );
+      setQueue(prev =>
+        prev.map(it => {
+          const f = refreshed.get(`${it.lessonId}:${it.question.id}`);
+          return f ? { ...it, question: f } : it;
+        }),
+      );
+    })();
+  }, [hydrated, refreshMistakeSnapshots]);
 
   // ============ 答题状态 ============
   const [answer, setAnswer] = useState("");

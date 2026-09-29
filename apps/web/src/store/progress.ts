@@ -306,6 +306,8 @@ interface ProgressState {
   addMistake: (lessonId: string, lessonTitle: string, question: Question) => void;
   removeMistake: (lessonId: string, questionId: number) => void;
   clearMistakesForLesson: (lessonId: string) => void;
+  /** 用最新题库数据刷新既有错题快照（题目内容/C选项/答案可能被修正过） */
+  refreshMistakeSnapshots: (updates: Array<{ lessonId: string; questionId: number; question: Question }>) => void;
   bumpStreakIfNeeded: () => void;
   toggleMute: () => void;
   toggleAutoNarrate: () => void;
@@ -1295,6 +1297,24 @@ export const useProgressStore = create<ProgressState>()(
         set(state => ({
           mistakesBank: state.mistakesBank.filter(m => m.lessonId !== lessonId),
         }));
+        queueDelta({ type: "mistakes_bank", value: get().mistakesBank });
+      },
+
+      refreshMistakeSnapshots: updates => {
+        if (!updates.length) return;
+        set(state => {
+          const map = new Map(updates.map(u => [`${u.lessonId}:${u.questionId}`, u.question]));
+          let changed = false;
+          const next = state.mistakesBank.map(m => {
+            const q = map.get(`${m.lessonId}:${m.question.id}`);
+            if (q && q !== m.question) {
+              changed = true;
+              return { ...m, question: q };
+            }
+            return m;
+          });
+          return changed ? { mistakesBank: next } : {};
+        });
         queueDelta({ type: "mistakes_bank", value: get().mistakesBank });
       },
 
