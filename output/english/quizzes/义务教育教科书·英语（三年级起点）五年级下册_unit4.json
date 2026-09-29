@@ -462,7 +462,7 @@
         "options": [
           "Grandpa",
           "Grandpa's",
-          "grandpa",
+          "the Grandpa's",
           "Grandpas"
         ],
         "answer": "Grandpa's",
@@ -494,7 +494,7 @@
         "options": [
           "nineth",
           "ninth",
-          "nineth",
+          "ninteth",
           "ninter"
         ],
         "answer": "ninth",
