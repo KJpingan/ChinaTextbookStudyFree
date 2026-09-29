@@ -61,7 +61,7 @@ jobs:
       - name: Pre-download data.zip
         run: |
           mkdir -p data
-          curl -sL "https://github.com/${{ github.repository }}/releases/download/v1.1.0-assets/data.zip" -o data/data.zip
+          curl -sL "https://github.com/${{ github.repository }}/releases/download/v1.2.0-assets/data.zip" -o data/data.zip
           if [ -s data/data.zip ] && python3 -c "import zipfile; zipfile.ZipFile('data/data.zip')" 2>/dev/null; then
             echo "data.zip downloaded OK ($(du -h data/data.zip | cut -f1))"
           else

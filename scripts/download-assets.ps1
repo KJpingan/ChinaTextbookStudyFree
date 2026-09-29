@@ -2,14 +2,14 @@
 #
 # 用法:
 #   powershell -ExecutionPolicy Bypass -File scripts\download-assets.ps1
-#   powershell -ExecutionPolicy Bypass -File scripts\download-assets.ps1 -Tag v1.1.0-assets
+#   powershell -ExecutionPolicy Bypass -File scripts\download-assets.ps1 -Tag v1.2.0-assets
 
 param(
-    [string]$Tag = "latest"
+    [string]$Tag = "v1.2.0-assets"
 )
 
 $ErrorActionPreference = "Stop"
-$Repo = "wuwangzhang1216/ChinaTextbookStudyFree"
+$Repo = "pelico/ChinaTextbookStudyFree"
 $RootDir = Split-Path -Parent $PSScriptRoot
 $FrontendDir = Join-Path $RootDir "apps\web"
 $PublicDir = Join-Path $FrontendDir "public"

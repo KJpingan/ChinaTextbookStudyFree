@@ -51,10 +51,10 @@ RUN npm ci --no-audit --no-fund
 COPY . .
 
 # ---- 资源下载 ----
-# SKIP_ASSETS=false（默认）：下载全部资源 ~1.4GB，镜像自包含
+# SKIP_ASSETS=false（默认）：下载全部资源 ~1.9GB，镜像自包含
 # SKIP_ASSETS=true：解压预下载的 data.zip 到 public/data/，音频/图片用 volume 挂载
 ARG SKIP_ASSETS=false
-ARG RELEASE_URL="https://github.com/pelico/ChinaTextbookStudyFree/releases/download/v1.1.0-assets"
+ARG RELEASE_URL="https://github.com/pelico/ChinaTextbookStudyFree/releases/download/v1.2.0-assets"
 RUN if [ "$SKIP_ASSETS" = "false" ]; then \
       bash scripts/download-assets.sh; \
     elif [ -f /app/data/data.zip ]; then \

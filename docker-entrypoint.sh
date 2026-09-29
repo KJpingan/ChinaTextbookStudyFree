@@ -22,8 +22,8 @@
 #    > 环境变量 RELEASE_URL > 下方默认官方源。
 # 常见 ghproxy 加速域名可参考: ghproxy.com / gh-proxy.com / ghproxy.net / mirror.ghproxy.com，
 # 例如在「我的」或 RELEASE_URL 里填：
-#   https://ghproxy.com/https://github.com/pelico/ChinaTextbookStudyFree/releases/download/v1.1.0-assets
-DEFAULT_RELEASE_URL="https://github.com/pelico/ChinaTextbookStudyFree/releases/download/v1.1.0-assets"
+#   https://ghproxy.com/https://github.com/pelico/ChinaTextbookStudyFree/releases/download/v1.2.0-assets
+DEFAULT_RELEASE_URL="https://github.com/pelico/ChinaTextbookStudyFree/releases/download/v1.2.0-assets"
 RELEASE_URL="${RELEASE_URL:-$DEFAULT_RELEASE_URL}"
 
 # 读取最终生效的资源下载源 Base URL（每次下载前调用，支持运行时动态换源）
