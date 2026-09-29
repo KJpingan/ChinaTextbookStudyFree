@@ -635,14 +635,12 @@ start_background_download() {
         # 校验(index.json 存在且可解析)成功后再原子替换；任何失败都保留现有 data，
         # 保证"没下载到新 data 之前，应用照样正常答题"。
         do_download_data() {
-            if ! should_download "$HTML_ROOT/data"; then
-                DATA_STATUS="ready"
-                DATA_PERCENT=100
-                DATA_COUNT=$(count_files "$HTML_ROOT/data")
-                return 0
-            fi
-
-            echo "  [data] 尝试校验/更新题库（${DL_URL}/data.zip）..."
+            # data 是答题底座，始终内置可用。采用「启动自校验」：
+            # 每次启动只下载很小的 data.zip，计算其 SHA256 与本地 .dataset-sha 对比，
+            # 一致→跳过；不一致→解压并校验(index.json)成功后原子替换。
+            # 任何失败都保留现有题库，保证"没拉到新 data 之前照样正常答题"。
+            # 刻意不用 .resource-version(标签) 判定：同一 tag 更新 data.zip 也应被识别。
+            echo "  [data] 校验/更新题库（${DL_URL}/data.zip）..."
             DATA_STATUS="downloading"
             DATA_PERCENT=0
             DATA_ERROR=""
@@ -653,32 +651,41 @@ start_background_download() {
                 /tmp/data.zip \
                 "data" \
                 DATA_STATUS DATA_PERCENT DATA_DOWNLOADED DATA_TOTAL DATA_ERROR; then
-                rm -rf /tmp/data-new
-                mkdir -p /tmp/data-new
-                extract_err=$(extract_zip /tmp/data.zip /tmp/data-new 2>&1)
-                extract_exit=$?
-                rm -f /tmp/data.zip
-                if [ "$extract_exit" -eq 0 ] && [ -f "/tmp/data-new/index.json" ]; then
-                    # 原子替换：现有 data 移到 .old 兜底，再换上新数据，最后删旧
-                    rm -rf "$HTML_ROOT/data.old"
-                    [ -d "$HTML_ROOT/data" ] && mv "$HTML_ROOT/data" "$HTML_ROOT/data.old"
-                    mv /tmp/data-new "$HTML_ROOT/data"
-                    rm -rf "$HTML_ROOT/data.old" /tmp/data-new
-                    mark_version "$HTML_ROOT/data"
-                    DATA_STATUS="ready"
-                    DATA_PERCENT=100
+                _zip_sha="$(sha256sum /tmp/data.zip 2>/dev/null | awk '{print $1}')"
+                _local_sha="$(cat "$HTML_ROOT/data/.dataset-sha" 2>/dev/null)"
+                if [ -n "$_zip_sha" ] && [ -n "$_local_sha" ] && [ "$_zip_sha" = "$_local_sha" ]; then
+                    # 题库无变化，跳过
+                    rm -f /tmp/data.zip
+                    DATA_STATUS="ready"; DATA_PERCENT=100
                     DATA_COUNT=$(count_files "$HTML_ROOT/data")
-                    nginx -s reload 2>/dev/null || true
-                    echo "  [data] ✓ 题库已更新（$DATA_COUNT 个文件）"
+                    echo "  [data] 题库已是最新（sha 一致）"
                 else
-                    rm -rf /tmp/data-new /tmp/data.zip
-                    DATA_ERROR="解压/校验失败(exit=$extract_exit): $(echo "$extract_err" | head -2)"
-                    if [ "$DATA_COUNT" -gt 0 ]; then
+                    rm -rf /tmp/data-new
+                    mkdir -p /tmp/data-new
+                    extract_err=$(extract_zip /tmp/data.zip /tmp/data-new 2>&1)
+                    extract_exit=$?
+                    rm -f /tmp/data.zip
+                    if [ "$extract_exit" -eq 0 ] && [ -f "/tmp/data-new/index.json" ]; then
+                        # 原子替换：现有 data 移到 .old 兜底，再换上新数据，最后删旧
+                        rm -rf "$HTML_ROOT/data.old"
+                        [ -d "$HTML_ROOT/data" ] && mv "$HTML_ROOT/data" "$HTML_ROOT/data.old"
+                        mv /tmp/data-new "$HTML_ROOT/data"
+                        rm -rf "$HTML_ROOT/data.old"
+                        printf '%s' "$_zip_sha" > "$HTML_ROOT/data/.dataset-sha"
                         DATA_STATUS="ready"; DATA_PERCENT=100
-                        echo "  [data] ✗ 校验失败，保留现有题库"
+                        DATA_COUNT=$(count_files "$HTML_ROOT/data")
+                        nginx -s reload 2>/dev/null || true
+                        echo "  [data] ✓ 题库已更新（$DATA_COUNT 个文件, sha=$_zip_sha）"
                     else
-                        DATA_STATUS="error"
-                        echo "  [data] ✗ 校验失败：$DATA_ERROR"
+                        rm -rf /tmp/data-new /tmp/data.zip
+                        DATA_ERROR="解压/校验失败(exit=$extract_exit): $(echo "$extract_err" | head -2)"
+                        if [ "$DATA_COUNT" -gt 0 ]; then
+                            DATA_STATUS="ready"; DATA_PERCENT=100
+                            echo "  [data] ✗ 校验失败，保留现有题库"
+                        else
+                            DATA_STATUS="error"
+                            echo "  [data] ✗ 校验失败：$DATA_ERROR"
+                        fi
                     fi
                 fi
             else
