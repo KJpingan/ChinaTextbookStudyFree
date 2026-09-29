@@ -54,6 +54,12 @@ import {
 
 // ---- 资源状态类型 ----
 interface AssetsStatus {
+  data: "pending" | "downloading" | "ready" | "error" | "skipped";
+  dataFiles: number;
+  dataPercent: number;
+  dataDownloaded: string;
+  dataTotal: string;
+  dataError: string;
   audio: "pending" | "downloading" | "ready" | "error" | "skipped";
   audioFiles: number;
   audioPercent: number;
@@ -137,7 +143,8 @@ export function ProfileClient() {
         if (cancelled || stopped) return;
         // 读取最新 state（避免闭包陷阱）
         const cur = assetsStatusRef.current;
-        const allDone = cur && ["ready", "skipped", "error"].includes(cur.audio)
+        const allDone = cur && ["ready", "skipped", "error"].includes(cur.data)
+            && ["ready", "skipped", "error"].includes(cur.audio)
             && ["ready", "skipped", "error"].includes(cur.textbookPages)
             && ["ready", "skipped", "error"].includes(cur.storyImages);
         if (allDone) {
@@ -190,7 +197,8 @@ export function ProfileClient() {
         await fetchStatus();
         if (cancelled || stopped) return;
         const cur = assetsStatusRef.current;
-        const allDone = cur && ["ready", "skipped", "error"].includes(cur.audio)
+        const allDone = cur && ["ready", "skipped", "error"].includes(cur.data)
+          && ["ready", "skipped", "error"].includes(cur.audio)
           && ["ready", "skipped", "error"].includes(cur.textbookPages)
           && ["ready", "skipped", "error"].includes(cur.storyImages);
         if (allDone) { stopped = true; return; }
@@ -209,6 +217,7 @@ export function ProfileClient() {
     setAssetsStatus(prev => {
       if (!prev) return prev;
       const map: Record<string, Partial<AssetsStatus>> = {
+        data: { data: "downloading", dataPercent: 0, dataError: "" },
         audio: { audio: "downloading", audioPercent: 0, audioError: "" },
         pages: { textbookPages: "downloading", pagesPercent: 0, pagesError: "" },
         stories: { storyImages: "downloading", storiesPercent: 0, storiesError: "" },
@@ -516,7 +525,7 @@ export function ProfileClient() {
             )}
           </div>
           <div className="text-xs text-ink-light mb-2">
-            容器首次启动时自动下载音频和图片资源
+            容器启动时自动校验并更新题库与音频/图片资源（题库数据内置兜底，缺资源也能正常答题）
           </div>
 
           {assetsError ? (
@@ -527,6 +536,18 @@ export function ProfileClient() {
             </div>
           ) : assetsStatus ? (
             <div className="divide-y divide-bg-softer -mx-2">
+              <StatusRow
+                icon={Book}
+                label="题库数据"
+                status={assetsStatus.data}
+                count={assetsStatus.dataFiles}
+                percent={assetsStatus.dataPercent}
+                downloaded={assetsStatus.dataDownloaded}
+                total={assetsStatus.dataTotal}
+                errorMsg={assetsStatus.dataError}
+                resourceKey="data"
+                onRetry={handleRetry}
+              />
               <StatusRow
                 icon={Volume}
                 label="音频资源"

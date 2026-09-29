@@ -155,6 +155,25 @@ def init_db():
     CREATE INDEX IF NOT EXISTS idx_img_book ON page_images(book_id);
     """)
 
+    # 家长设置 + 进度同步表
+    # 必须放在迁移之前创建：下面的 ALTER TABLE 依赖 parent_settings 已存在，
+    # 若在全新库上先 ALTER 会因 "no such table" 导致 init_db 崩溃、API 全部不可用。
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS parent_settings (
+        id              INTEGER PRIMARY KEY DEFAULT 1,
+        password_hash   TEXT,
+        password_salt   TEXT,
+        is_setup        INTEGER DEFAULT 0,
+        ai_api_key      TEXT,
+        ai_base_url     TEXT DEFAULT '',
+        ai_model        TEXT DEFAULT 'gemini-3.1-flash-lite',
+        daily_limit_ms  INTEGER DEFAULT 0,
+        session_limit_ms INTEGER DEFAULT 0,
+        release_url     TEXT DEFAULT '',
+        updated_at      TEXT NOT NULL
+    );
+    """)
+
     # Schema migrations (SQLite 不支持 IF NOT EXISTS for ADD COLUMN)
     cols_page = {r[1] for r in conn.execute("PRAGMA table_info(page_images)")}
     if "kp_id" not in cols_page:
@@ -182,22 +201,6 @@ def init_db():
     """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_pt_book ON page_texts(book_id);")
 
-    # 家长设置 + 进度同步表
-    conn.execute("""
-    CREATE TABLE IF NOT EXISTS parent_settings (
-        id              INTEGER PRIMARY KEY DEFAULT 1,
-        password_hash   TEXT,
-        password_salt   TEXT,
-        is_setup        INTEGER DEFAULT 0,
-        ai_api_key      TEXT,
-        ai_base_url     TEXT DEFAULT '',
-        ai_model        TEXT DEFAULT 'gemini-3.1-flash-lite',
-        daily_limit_ms  INTEGER DEFAULT 0,
-        session_limit_ms INTEGER DEFAULT 0,
-        release_url     TEXT DEFAULT '',
-        updated_at      TEXT NOT NULL
-    );
-    """)
     conn.execute("""
     CREATE TABLE IF NOT EXISTS kids (
         id              TEXT PRIMARY KEY,

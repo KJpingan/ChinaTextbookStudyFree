@@ -78,6 +78,12 @@ fi
 write_status() {
     cat > "$STATUS_FILE" << EOF
 {
+  "data": "${DATA_STATUS:-pending}",
+  "dataFiles": ${DATA_COUNT:-0},
+  "dataPercent": ${DATA_PERCENT:-0},
+  "dataDownloaded": "${DATA_DOWNLOADED:-}",
+  "dataTotal": "${DATA_TOTAL:-}",
+  "dataError": "${DATA_ERROR:-}",
   "audio": "${AUDIO_STATUS:-pending}",
   "audioFiles": ${AUDIO_COUNT:-0},
   "audioPercent": ${AUDIO_PERCENT:-0},
@@ -106,8 +112,8 @@ EOF
 # 统计目录文件数（递归）
 count_files() {
     if [ -d "$1" ]; then
-        # 排除版本标记文件，避免把 .resource-version 算进资源数量
-        find "$1" -type f ! -name '.resource-version' 2>/dev/null | wc -l | tr -d ' '
+        # 排除版本标记文件，避免把 .resource-version / .dataset-sha 算进资源数量
+        find "$1" -type f ! -name '.resource-version' ! -name '.dataset-sha' 2>/dev/null | wc -l | tr -d ' '
     else
         echo 0
     fi
@@ -180,17 +186,24 @@ file_size() {
 }
 
 # 初始化状态
+DATA_STATUS="pending"
 AUDIO_STATUS="pending"
 PAGES_STATUS="pending"
 STORIES_STATUS="pending"
+DATA_PERCENT=0
 AUDIO_PERCENT=0
 PAGES_PERCENT=0
 STORIES_PERCENT=0
+DATA_COUNT=$(count_files "$HTML_ROOT/data")
 AUDIO_COUNT=$(count_files "$HTML_ROOT/audio")
 PAGES_COUNT=$(count_files "$HTML_ROOT/textbook-pages")
 STORIES_COUNT=$(count_files "$HTML_ROOT/story-images")
 
 # 如果已有文件，标记为 ready
+if [ "$DATA_COUNT" -gt 0 ]; then
+    DATA_STATUS="ready"
+    DATA_PERCENT=100
+fi
 if [ "$AUDIO_COUNT" -gt 0 ]; then
     AUDIO_STATUS="ready"
     AUDIO_PERCENT=100
@@ -437,6 +450,10 @@ start_api_server() {
 
                 # 处理请求
                 case "$path" in
+                    *retry*resource=data*)
+                        touch "$RETRY_FLAG_DIR/data"
+                        echo "[API] 收到题库数据重试请求"
+                        ;;
                     *retry*resource=audio*)
                         touch "$RETRY_FLAG_DIR/audio"
                         echo "[API] 收到音频重试请求"
@@ -450,6 +467,7 @@ start_api_server() {
                         echo "[API] 收到故事配图重试请求"
                         ;;
                     *retry*resource=all*)
+                        touch "$RETRY_FLAG_DIR/data"
                         touch "$RETRY_FLAG_DIR/audio"
                         touch "$RETRY_FLAG_DIR/pages"
                         touch "$RETRY_FLAG_DIR/stories"
@@ -488,12 +506,16 @@ start_api_server() {
 start_background_download() {
     if [ "$SKIP_DOWNLOAD" = "true" ]; then
         echo "=== SKIP_DOWNLOAD=true，跳过资源下载 ==="
+        # 题库 data 内置在镜像里，始终可用（该功能关闭背景下载，data 仅做本地版本快照）
+        DATA_STATUS="ready"
         AUDIO_STATUS="skipped"
         PAGES_STATUS="skipped"
         STORIES_STATUS="skipped"
+        DATA_PERCENT=100
         AUDIO_PERCENT=100
         PAGES_PERCENT=100
         STORIES_PERCENT=100
+        DATA_COUNT=$(count_files "$HTML_ROOT/data")
         write_status
         return
     fi
@@ -503,9 +525,12 @@ start_background_download() {
     (
         # 磁盘空间检查
         if ! check_disk_space; then
+            # 题库 data 内置在镜像里，不受磁盘影响，始终可用
+            DATA_STATUS="ready"
             AUDIO_STATUS="skipped"
             PAGES_STATUS="skipped"
             STORIES_STATUS="skipped"
+            DATA_PERCENT=100
             AUDIO_PERCENT=100
             PAGES_PERCENT=100
             STORIES_PERCENT=100
@@ -604,17 +629,90 @@ start_background_download() {
         }
 
         # 初始下载
-        echo "[1/3] 下载音频..."
+        # ---- 校验/更新题库 data ----
+        # 题库(data)是答题底座，与音频/图片/原页不同，绝不能"先清空再下载"。
+        # 镜像内置 data 始终作为兜底可用；更新的 data 先下载到临时目录，
+        # 校验(index.json 存在且可解析)成功后再原子替换；任何失败都保留现有 data，
+        # 保证"没下载到新 data 之前，应用照样正常答题"。
+        do_download_data() {
+            if ! should_download "$HTML_ROOT/data"; then
+                DATA_STATUS="ready"
+                DATA_PERCENT=100
+                DATA_COUNT=$(count_files "$HTML_ROOT/data")
+                return 0
+            fi
+
+            echo "  [data] 尝试校验/更新题库（${DL_URL}/data.zip）..."
+            DATA_STATUS="downloading"
+            DATA_PERCENT=0
+            DATA_ERROR=""
+            write_status
+
+            if download_with_progress \
+                "$DL_URL/data.zip" \
+                /tmp/data.zip \
+                "data" \
+                DATA_STATUS DATA_PERCENT DATA_DOWNLOADED DATA_TOTAL DATA_ERROR; then
+                rm -rf /tmp/data-new
+                mkdir -p /tmp/data-new
+                extract_err=$(extract_zip /tmp/data.zip /tmp/data-new 2>&1)
+                extract_exit=$?
+                rm -f /tmp/data.zip
+                if [ "$extract_exit" -eq 0 ] && [ -f "/tmp/data-new/index.json" ]; then
+                    # 原子替换：现有 data 移到 .old 兜底，再换上新数据，最后删旧
+                    rm -rf "$HTML_ROOT/data.old"
+                    [ -d "$HTML_ROOT/data" ] && mv "$HTML_ROOT/data" "$HTML_ROOT/data.old"
+                    mv /tmp/data-new "$HTML_ROOT/data"
+                    rm -rf "$HTML_ROOT/data.old" /tmp/data-new
+                    mark_version "$HTML_ROOT/data"
+                    DATA_STATUS="ready"
+                    DATA_PERCENT=100
+                    DATA_COUNT=$(count_files "$HTML_ROOT/data")
+                    nginx -s reload 2>/dev/null || true
+                    echo "  [data] ✓ 题库已更新（$DATA_COUNT 个文件）"
+                else
+                    rm -rf /tmp/data-new /tmp/data.zip
+                    DATA_ERROR="解压/校验失败(exit=$extract_exit): $(echo "$extract_err" | head -2)"
+                    if [ "$DATA_COUNT" -gt 0 ]; then
+                        DATA_STATUS="ready"; DATA_PERCENT=100
+                        echo "  [data] ✗ 校验失败，保留现有题库"
+                    else
+                        DATA_STATUS="error"
+                        echo "  [data] ✗ 校验失败：$DATA_ERROR"
+                    fi
+                fi
+            else
+                if [ "$DATA_COUNT" -gt 0 ]; then
+                    DATA_STATUS="ready"; DATA_PERCENT=100
+                    echo "  [data] 下载失败，使用内置/现有题库兜底"
+                else
+                    DATA_STATUS="error"
+                fi
+            fi
+            write_status
+        }
+
+        echo "[1/4] 校验/更新题库数据..."
+        do_download_data
+        echo "[2/4] 下载音频..."
         do_download_audio
-        echo "[2/3] 下载课本原页..."
+        echo "[3/4] 下载课本原页..."
         do_download_pages
-        echo "[3/3] 下载故事配图..."
+        echo "[4/4] 下载故事配图..."
         do_download_stories
         echo "=== 初始下载流程结束，进入监听重试模式 ==="
 
         # ---- 重试监听循环（每 5 秒检查一次 flag 文件）----
         while true; do
             sleep 5
+
+            if [ -f "$RETRY_FLAG_DIR/data" ] && [ "$DATA_STATUS" = "error" ]; then
+                rm -f "$RETRY_FLAG_DIR/data"
+                echo "[重试] 重新校验/下载题库数据..."
+                do_download_data
+                write_status
+                nginx -s reload 2>/dev/null || true
+            fi
 
             if [ -f "$RETRY_FLAG_DIR/audio" ] && [ "$AUDIO_STATUS" = "error" ]; then
                 rm -f "$RETRY_FLAG_DIR/audio"
@@ -648,6 +746,7 @@ start_background_download() {
             fi
 
             # 清理过期的 flag（状态不是 error 但有 flag）
+            [ -f "$RETRY_FLAG_DIR/data" ] && [ "$DATA_STATUS" != "error" ] && rm -f "$RETRY_FLAG_DIR/data"
             [ -f "$RETRY_FLAG_DIR/audio" ] && [ "$AUDIO_STATUS" != "error" ] && rm -f "$RETRY_FLAG_DIR/audio"
             [ -f "$RETRY_FLAG_DIR/pages" ] && [ "$PAGES_STATUS" != "error" ] && rm -f "$RETRY_FLAG_DIR/pages"
             [ -f "$RETRY_FLAG_DIR/stories" ] && [ "$STORIES_STATUS" != "error" ] && rm -f "$RETRY_FLAG_DIR/stories"
