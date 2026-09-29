@@ -20,17 +20,14 @@
 - 🧩 **AI 打印试卷**：按教材单元/章节自由选题，AI 一键生成可打印试卷与答案
 - 🔊 **全站语音**：题目、选项、知识讲解均配有 TTS 语音朗读
 - 📖 **课文听读**：语文/英语课文逐句跟读，支持连播，配合课本原页展示
-- 📚 **课外故事**：AI 生成 284 篇分级读物 + 阅读理解题 + 配图，巩固课内知识
 - 🎮 **在玩中学**：题目形式生动、即时反馈，让孩子在闯关和互动中建立对知识的兴趣
-- 🎁 **奖励系统**：宝石、成就、皮肤装扮、商店、排行榜、连胜激励，营造持续学习的动力
+- 🎁 **奖励系统**：宝石、成就、皮肤装扮、商店、排行榜、连胜激励
 - 📱 **多端可用**：Web / 原生 Android App，支持连接局域网或公网地址
 - 🌏 **服务每一个孩子**：从一年级到六年级，只要有一台能上网的设备，就能用
 
 ---
 
 ## 📸 功能预览
-
-### 产品截图
 
 <table>
   <tr>
@@ -72,36 +69,6 @@
 | 语文 | 统编版 | 一至六年级 | 188 篇 |
 | 英语 | 人教版 PEP | 三至六年级 | 96 篇 |
 | 科学 | 教科版 | 一至六年级 | — |
-
----
-
-## 🏗️ 架构概览
-
-本项目是**前后端分离**的单仓库：
-
-```
-┌─────────────────────────────────────────────┐
-│  前端  apps/web  (Next.js 静态导出)           │
-│  ├─ 学习：grade / book / lesson / guide      │
-│  ├─ 内容：reading / stories / review         │
-│  ├─ 互动：league(排行榜) / shop(商店) / profile │
-│  └─ AI：custom(打印试卷) / worksheet         │
-└──────────────┬──────────────────────────────┘
-               │ 静态文件 (nginx 托送)
-┌──────────────┴──────────────────────────────┐
-│  后端  custom_server.py  (Python 内建 HTTP)  │
-│  ├─ /api/custom/*  学习/家长/进度/kids 等 API │
-│  ├─ /api/custom/worksheet/generate  AI 试卷   │
-│  ├─ SQLite 持久化   /data 卷（家长设置/进度） │
-│  └─ 资源代理：音频/图片/课本原页              │
-└──────────────┬──────────────────────────────┘
-               │
-      nginx + 静态资源（音频/图片/课本）
-```
-
-- **前端**：Next.js `output: "export"` 纯静态导出，SPA 路由，配合 Service Worker 做弱网/离线优化。
-- **后端**：Python 内建 `http.server`（`custom_server.py`），提供 REST API + 资源代理，数据落在挂载卷 `/data` 的 SQLite 中，容器重启数据不丢。
-- **部署**：一个 `docker compose up` 即可同时拉起 nginx（前端）与后端 API，支持 AMD / ARM / ARMv7 多种架构。
 
 ---
 
@@ -161,11 +128,11 @@ services:
 
 ### 资源下载慢 / 受限网络
 
-首次启动容器会在后台自动下载音频、配图、课本原页（合计约 1.9GB）。默认走**官方 GitHub 源（不带任何代理）**，并支持**断点续传**（中断后重试从断点继续）；Web 页面先可访问，资源逐步就绪；下载失败会自动重试 3 次，失败也不影响页面访问。若下载慢或失败，按需处理：
+首次启动容器会在后台自动下载音频、配图、课本原页（合计约 1.9GB）。默认走**官方 GitHub 源（不带任何代理）**，支持**断点续传**；Web 页面先可访问，资源逐步就绪；下载失败自动重试 3 次，不影响页面访问。若下载慢或失败，可按需处理：
 
-1. **挂载资源目录（推荐，下载一次永久生效）**：见上例，把三个资源目录挂载到宿主机，资源缓存本地，重启/重建容器不重复下载。
-2. **「我的」模块换源（推荐，无需重启容器）**：在页面的「家长设置 → 资源下载源」填入加速镜像 Base URL（如 `https://ghproxy.com/https://github.com/pelico/ChinaTextbookStudyFree/releases/download/v1.2.0-assets`）保存即可，再点页面上的重试即生效。也可换 `gh-proxy.com / ghproxy.net / mirror.ghproxy.com` 等。
-3. **配置代理**：给容器设置 `HTTP_PROXY` / `HTTPS_PROXY` 环境变量；后端 AI 接口会自动强制直连，代理只作用于资源下载，互不影响。
+1. **挂载资源目录（推荐，下载一次永久生效）**：把三个资源目录挂载到宿主机，重启/重建容器不重复下载。
+2. **「我的」模块换源（推荐，无需重启容器）**：在「家长设置 → 资源下载源」填入加速镜像 Base URL（如 `https://ghproxy.com/https://github.com/pelico/ChinaTextbookStudyFree/releases/download/v1.2.0-assets`）保存即可。也可换 `gh-proxy.com / ghproxy.net / mirror.ghproxy.com` 等。
+3. **配置代理**：给容器设置 `HTTP_PROXY` / `HTTPS_PROXY` 环境变量；后端 AI 接口强制直连，代理只作用于资源下载。
 4. **环境变量 `RELEASE_URL`**：覆盖下载源（优先级低于「我的」模块设置），例如 `-e RELEASE_URL=https://github.com/pelico/ChinaTextbookStudyFree/releases/download/v1.2.0-assets`。
 5. **跳过下载**：只体验纯前端（不需要音频/图片）时设 `SKIP_DOWNLOAD=true`。
 6. **查进度**：浏览器打开 `http://<主机>:3088/assets-status.json` 可查看资源下载状态。
@@ -178,7 +145,7 @@ services:
 |----|----|
 | 外部端口 | `3088` → 容器 `80` |
 | 数据卷 | `./data/custom:/data`（保存家长设置、学习进度等） |
-| 镜像 | 见 `.github/workflows/docker-publish.yml`（`latest` + commit sha） |
+| 镜像 | `latest` + commit sha（见 `.github/workflows/docker-publish.yml`） |
 
 ### 轻量镜像（资源用卷挂载，镜像更小）
 
@@ -189,104 +156,19 @@ docker build -t china-study-free:lite --build-arg SKIP_ASSETS=true .
 
 ---
 
-## 🖥️ 本地开发（源码方式）
-
-### 1. 克隆仓库
-
-```bash
-git clone https://github.com/pelico/ChinaTextbookStudyFree.git
-cd ChinaTextbookStudyFree
-```
-
-### 2. 下载资源文件
-
-音频、配图、课本原页和题库数据体积较大，通过 GitHub Release 分发，不包含在 Git 仓库中。
-
-```bash
-# Linux / macOS / Git Bash (Windows)
-bash scripts/download-assets.sh
-
-# Windows PowerShell
-powershell -ExecutionPolicy Bypass -File scripts\download-assets.ps1
-```
-
-这会自动下载并解压以下文件：
-
-| 文件 | 内容 | 大小 | 解压到 |
-|------|------|------|--------|
-| `audio.tar.gz` | 71,502 个 TTS 音频 (Opus) | ~870 MB | `apps/web/public/audio/` |
-| `story-images.zip` | 284 张 AI 故事配图 | ~368 MB | `apps/web/public/story-images/` |
-| `textbook-pages.zip` | 1,577 张课本原页 (JPG) | ~192 MB | `apps/web/public/textbook-pages/` |
-| `data.zip` | 前端构建数据 (JSON) | ~4.3 MB | `apps/web/public/data/` |
-| `data-source.zip` | passages + stories 源 JSON | ~811 KB | `data/` |
-
-### 3. 运行后端（可选，启用自定义 API）
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
-
-# 按需配置环境变量（见 custom_server.py 顶部说明）
-export PORT=8001
-export AI_API_KEY=sk-xxx               # AI 密钥（若未在后端默认 Key 中配置）
-export AI_API_BASE="https://你的AI网关/v1"   # AI 网关地址，请按需填写
-
-python3 custom_server.py
-```
-
-### 4. 运行 Web 端
-
-```bash
-cd apps/web
-npm install
-npm run dev
-```
-
-访问 http://localhost:3000 即可。手机端用浏览器打开后「添加到主屏幕」即可获得类原生 App 体验。
-
-### 5. （可选）运行数据生成 Pipeline
-
-如需从教材 PDF 重新生成题库数据：
-
-```bash
-python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-
-# 配置 .env（填入 API Key）
-
-# 生成题库
-python scripts/quiz/pipeline.py --subject all
-
-# 生成课外故事
-python scripts/stories/pipeline.py --subject all
-
-# 生成故事配图
-python scripts/stories/images.py --subject all
-
-# 生成 TTS 音频
-python scripts/tts/collect_texts.py
-python scripts/tts/api_tts.py
-
-# 构建前端数据
-cd apps/web && npx tsx scripts/build-data.ts
-```
-
----
-
 ## 📱 Android App
 
 `apps/android` 为原生 Android 包装，用 WebView 加载前端，行为与 Web 端一致。
 
-- **构建**：由 `.github/workflows/android-build.yml` 在打 Tag / main 变更时自动产出 APK。
-- **数据持久化**：WebView 使用 `LOAD_DEFAULT` + 禁用 Service Worker 防坏缓存；`csf-active-kid`（当前学习者）等偏好存于 localStorage 并**持久保留**，冷启动不再要求反复选择。
+- **构建**：由 `.github/workflows/android-build.yml` 在打 Tag / main 变更时自动产出 APK，附带在对应 Release。
+- **数据持久化**：WebView 使用 `LOAD_DEFAULT` + 禁用 Service Worker 防坏缓存；`csf-active-kid` 等偏好存于 localStorage 并持久保留。
 - **使用**：安装后填入你的部署地址（局域网 `http://主机IP:3088` 或公网地址）即可。
 
 ---
 
 ## 🧩 AI 打印试卷
 
-在「打印试卷」（`/custom` 与 `/worksheet`）模块中，可按教材单元/章节课内选题、选择题型与难度，由 AI 生成标准化试卷：
+在「打印试卷」（`/custom` 与 `/worksheet`）模块中，可按教材单元/节节课内选题、选择题型与难度，由 AI 生成标准化试卷：
 
 - 支持**单元练习**与**考试模拟**两种模式
 - 生成结果含题干、选项、标准答案与解析，可打印表格下载
@@ -299,69 +181,19 @@ cd apps/web && npx tsx scripts/build-data.ts
 
 ```
 ChinaStudyFree/
-│
-├── scripts/
-│   ├── quiz/                       # 题库生成 Pipeline
-│   │   ├── pipeline.py             #   PDF → 大纲 → 题库
-│   │   ├── prompts.py              #   AI Prompt 模板（按学科定制）
-│   │   └── subjects.py             #   学科 / 版本 / 年级配置
-│   ├── stories/                    # 课外故事生成 Pipeline
-│   │   ├── pipeline.py             #   大纲 → 分级故事 + 阅读理解题
-│   │   ├── prompts_story.py        #   故事 Prompt 模板 + JSON Schema
-│   │   └── images.py               #   Gemini AI 配图生成
-│   ├── passages/                   # 课文抽取
-│   │   ├── extract_passages.py     #   PDF → 逐句课文 JSON
-│   │   └── render_pages.py         #   PDF → 课本原页 JPG
-│   ├── tts/                        # TTS 语音合成
-│   │   ├── collect_texts.py        #   扫描全部文本，生成待合成清单
-│   │   └── api_tts.py              #   DashScope API 批量合成
-│   ├── download-assets.sh          # 下载 Release 资源（Linux/macOS）
-│   ├── download-assets.ps1         # 下载 Release 资源（Windows）
-│   └── package-release.sh          # 打包资源为 Release 附件
-│
-├── custom_server.py                # 后端：REST API + AI 试卷 + 资源代理 + SQLite
-├── nginx.conf                      # nginx 静态托管 + API 反代
-├── docker-entrypoint.sh            # 容器入口（启动时下载资源/拉起后端）
-├── Dockerfile                      # 多架构 Docker 镜像（builder + nginx runtime）
-├── docker-compose.yml              # 一键部署（前端 + 后端 + 数据卷）
-│
+├── scripts/             # 数据生成 Pipeline（题库/故事/配图/TTS）+ 资源打包
+├── custom_server.py     # 后端：REST API + AI 试卷 + 资源代理 + SQLite
+├── nginx.conf           # nginx 静态托管 + API 反代
+├── docker-entrypoint.sh # 容器入口（启动时校验/下载资源、拉起后端）
+├── Dockerfile           # 多架构 Docker 镜像（builder + nginx runtime）
+├── docker-compose.yml   # 一键部署（前端 + 后端 + 数据卷）
 ├── apps/
-│   ├── web/                        # Next.js 前端（静态导出 + SPA）
-│   │   ├── src/
-│   │   │   ├── app/                # 路由与页面
-│   │   │   │   ├── book/           #   教材详情 / 学习路径
-│   │   │   │   ├── lesson/         #   答题页面
-│   │   │   │   ├── grade/          #   年级总览
-│   │   │   │   ├── reading/        #   课文听读
-│   │   │   │   ├── stories/        #   课外故事阅读 + 答题
-│   │   │   │   ├── review/         #   错题回顾
-│   │   │   │   ├── shop/           #   商店 / 装扮
-│   │   │   │   ├── league/         #   排行榜 / 连胜
-│   │   │   │   ├── profile/        #   个人中心 / 家长模式
-│   │   │   │   ├── custom/         #   打印试卷工作台
-│   │   │   │   └── worksheet/      #   AI 试卷生成
-│   │   │   ├── components/         # UI 组件
-│   │   │   ├── lib/                # 工具库（TTS、音效、kid、试卷、主题…）
-│   │   │   ├── store/              # Zustand 状态管理
-│   │   │   └── types/              # TypeScript 类型定义
-│   │   └── public/
-│   │       ├── audio/              # TTS 音频（通过 Release 下载）
-│   │       ├── data/               # 题库+故事 JSON（通过 Release 下载）
-│   │       ├── story-images/       # AI 故事配图（通过 Release 下载）
-│   │       └── textbook-pages/     # 课本原页图片（通过 Release 下载）
-│   └── android/                    # 原生 Android App（WebView 包装）
-│
-├── data/                           # 源数据（通过 Release 下载）
-│   ├── passages/                   #   课文听读源 JSON（语文/英语）
-│   └── stories/                    #   课外故事源 JSON（语文/英语）
-│
-├── output/                         # Pipeline 产出（大纲 + 题库 JSON）
-│
-├── packages/core/                  # TypeScript 共享域逻辑（Web 端运行时）
-│
-└── docs/
-    ├── screenshots/                # README 截图
-    └── custom-module-tech-design.html  # 自定义模块技术设计
+│   ├── web/             # Next.js 前端（静态导出 + SPA）
+│   └── android/         # 原生 Android App（WebView 包装）
+├── data/                # 源数据（课文/故事 JSON，通过 Release 下载）
+├── output/              # Pipeline 产出（大纲 + 题库 JSON）
+├── packages/core/       # TypeScript 共享域逻辑
+└── docs/                # 截图与设计文档
 ```
 
 ---
@@ -372,6 +204,14 @@ ChinaStudyFree/
 - **默认 AI Key（服务端存储）**：在「我的」配置后跨设备共享，打印试卷/生成功能无需每台设备单独填 Key。
 - **多学习者**：同一部署下可创建多个孩子档案，各自学习进度、宝石独立保存。
 - **数据安全**：进度与设置存于服务端 `/data` 卷（SQLite），容器升级不丢失；宝石/成就在多设备间通过 delta 协议保持一致。
+
+---
+
+## 🌍 部署与离线可用
+
+- **多架构**：支持 AMD / ARM64 / ARMv7（玩客云等），官方镜像见 `ghcr.io/pelico/chinatextbookstudyfree`。
+- **离线可用**：镜像内置题库数据兜底；题库每次启动自校验（SHA256 + 原子替换），无网也能正常答题，拉到新数据才更新。
+- **资源缓存**：audio / textbook-pages / story-images 挂载到宿主机后，重启或更换容器均不重复下载。
 
 ---
 
