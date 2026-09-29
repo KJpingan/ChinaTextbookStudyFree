@@ -103,7 +103,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         urlEditText = EditText(this).apply {
-            hint = "例如：http://192.168.1.100:5230"
+            hint = "例如：http://192.168.1.100:3088"
             textSize = 16f
             setText(if (currentUrl.isNotEmpty()) currentUrl else "https://xx.111312.xyz")
             setTextColor(Color.parseColor("#1A1A1A"))
