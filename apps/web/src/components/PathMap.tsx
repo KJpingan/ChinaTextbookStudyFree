@@ -166,33 +166,6 @@ export function PathMap({
   const sectionRefs = useRef(new Map<number, HTMLDivElement | null>());
   const [activeUnitNum, setActiveUnitNum] = useState<number>(unitEntries[0]?.[0] ?? 1);
 
-  // sticky top 值 = 元素在文档流里的原始 offsetTop —— 这样吸附时 y 位置不变
-  const stickyRef = useRef<HTMLDivElement>(null);
-  const [stickyTop, setStickyTop] = useState<number | null>(null);
-
-  useLayoutEffect(() => {
-    function measure() {
-      if (typeof window === "undefined") return;
-      const isLg = window.matchMedia("(min-width: 1024px)").matches;
-      if (!isLg) {
-        setStickyTop(null);
-        return;
-      }
-      const el = stickyRef.current;
-      if (!el) return;
-      let y = 0;
-      let cur: HTMLElement | null = el;
-      while (cur) {
-        y += cur.offsetTop;
-        cur = cur.offsetParent as HTMLElement | null;
-      }
-      setStickyTop(y);
-    }
-    measure();
-    window.addEventListener("resize", measure);
-    return () => window.removeEventListener("resize", measure);
-  }, []);
-
   // 进入学习地图时，自动定位到「当前待闯的关」（status === current）节点，
   // 让下一关正好出现在屏幕中上部，无需手动从上往下滑。
   // current 节点滚动兜底：书或课程列表变化（如答完返回）时重新定位。
@@ -294,15 +267,10 @@ export function PathMap({
   return (
     <div className="w-full max-w-md mx-auto lg:max-w-none lg:mx-0 px-4 lg:px-0 pb-6">
       {/* === sticky 单元 banner === */}
-      <div
-        ref={stickyRef}
-        className="sticky top-0 z-20 -mx-4 px-4 lg:mx-0 lg:px-0 pt-2 pb-3 bg-bg-soft/0 lg:bg-transparent"
-        style={
-          stickyTop !== null
-            ? { top: stickyTop }
-            : { top: "var(--cstf-top-bar-h, 0)" }
-        }
-      >
+      {/* 吸附位置：移动端贴住顶部白条正下方(var)，桌面端白条滚走、直接钉在视口顶部(top-0)。
+          不要用「元素原始 offsetTop」当吸附 top——内容上方高度不固定时(如续学卡片有/无)，
+          会把 banner 钉到页面偏下，出现「导航条跑到中间」的错位。 */}
+      <div className="sticky top-[var(--cstf-top-bar-h,0px)] lg:top-0 z-20 -mx-4 px-4 lg:mx-0 lg:px-0 pt-2 pb-3 bg-bg-soft/0 lg:bg-transparent">
         {topSlot && <div className="hidden lg:block mb-3">{topSlot}</div>}
         <AnimatePresence mode="wait">
           <motion.div

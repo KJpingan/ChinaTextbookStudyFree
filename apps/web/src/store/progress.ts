@@ -2095,12 +2095,28 @@ export async function initServerSync() {
             for (const k of clientOnlyKeys) {
               if (k in local) sanitized[k] = (local as any)[k];
             }
-            // 错题本：服务端为空但本地有数据 → 保留本地并补推到服务端（防止覆盖丢数据，
-            // 同时把首次的错题库播种到服务端）；服务端非空 → 以服务端为权威。
+            // 错题本：并集合并，避免覆盖丢数据。
+            // 背景：错题本是"整体替换"式同步，服务端为权威快照。若某个课程的错题刚在
+            // 本地新增、还没来得及 flush 到服务端，而服务端已存在其它课程错题（非空），
+            // 此时整体覆盖会用服务端的"部分"错题库把本地新增的另一课程错题冲掉，
+            // 导致复习错题时加载不出该课程题目；下一轮同步（delta 上报）后才恢复。
+            // 修法：以 key = "lessonId:questionId" 做并集 —— 双方都有的条目以服务端
+            // SRS 状态为权威（box/答对次数/毕业都取服务端）；仅本地有、服务端还没有的
+            // 新增条目保留本地并补推到服务端。既保留"服务端权威"，又不丢未同步的新错题。
             const serverMB = Array.isArray(progress.mistakesBank) ? progress.mistakesBank : [];
-            if (serverMB.length === 0 && Array.isArray(local.mistakesBank) && local.mistakesBank.length > 0) {
-              sanitized.mistakesBank = local.mistakesBank;
-              queueDelta({ type: "mistakes_bank", value: local.mistakesBank });
+            const localMB = Array.isArray(local.mistakesBank) ? local.mistakesBank : [];
+            const mk = (e: any) => `${e?.lessonId}:${e?.question?.id}`;
+            if (serverMB.length === 0 && localMB.length > 0) {
+              sanitized.mistakesBank = localMB;
+              queueDelta({ type: "mistakes_bank", value: localMB });
+            } else if (serverMB.length > 0 && localMB.length > 0) {
+              const serverKeys = new Set(serverMB.map(mk).filter(Boolean));
+              const extraLocal = localMB.filter(e => !serverKeys.has(mk(e)));
+              if (extraLocal.length > 0) {
+                const merged = [...serverMB, ...extraLocal];
+                sanitized.mistakesBank = merged;
+                queueDelta({ type: "mistakes_bank", value: merged });
+              }
             }
             // 设备无关标量：本地有值而服务端为空时，保留本地并补推到服务端（防空覆盖丢数据）
             if (!progress.lastActiveDate && local.lastActiveDate) {

@@ -152,7 +152,7 @@ export function CustomBook({ bookId }: { bookId: string }) {
               <div className="rounded-2xl border-2 border-warning/30 bg-warning/10 p-4 text-center">
                 <p className="text-sm font-extrabold text-ink mb-1">需要先提取文字</p>
                 <p className="text-xs text-ink-light">
-                  点击上方"阅读原文"，在阅读页逐页提取文字内容
+                  点击上方&ldquo;阅读原文&rdquo;，在阅读页逐页提取文字内容
                 </p>
                 <p className="text-xs text-ink-light mt-1">
                   提取后可人工修正，再回到此页生成大纲和题目

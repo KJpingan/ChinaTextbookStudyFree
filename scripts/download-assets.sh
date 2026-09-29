@@ -60,6 +60,16 @@ download() {
   curl -L --progress-bar -o "$out" "$BASE_URL/$name"
 }
 
+# 写入资源版本标记。启动脚本(docker-entrypoint.sh)会对比此标记与期望 tag，
+# 版本不一致时自动清空并重新下载覆盖；保持一致则跳过。全量镜像 bake 的资源
+# 也靠它标记，避免每次启动被误判为"无版本"而重复下载。
+mark_version() {
+  local dir="$1"
+  mkdir -p "$dir"
+  printf '%s' "$TAG" > "$dir/.resource-version"
+  echo "  版本标记: $TAG"
+}
+
 # ---- audio.tar.gz ----
 echo ""
 echo "--- 下载音频文件 (Opus 格式, ~870MB) ---"
@@ -74,6 +84,7 @@ else
   rm -f "/tmp/audio.tar.gz"
   echo "  完成 ✓ ($(find "$AUDIO_DIR" -name '*.opus' | wc -l) 个音频文件)"
 fi
+mark_version "$AUDIO_DIR"
 
 # ---- data.zip ----
 echo ""
@@ -102,6 +113,7 @@ else
   rm -f "/tmp/textbook-pages.zip"
   echo "  完成 ✓ ($(find "$PAGES_DIR" -name '*.jpg' | wc -l) 张课本扫描页)"
 fi
+mark_version "$PAGES_DIR"
 
 # ---- story-images.zip ----
 echo ""
@@ -116,6 +128,7 @@ else
   rm -f "/tmp/story-images.zip"
   echo "  完成 ✓ ($(find "$STORY_IMG_DIR" -name '*.jpg' | wc -l) 张故事配图)"
 fi
+mark_version "$STORY_IMG_DIR"
 
 # ---- data-source.zip (passages + stories 源 JSON, 仓库根目录) ----
 echo ""

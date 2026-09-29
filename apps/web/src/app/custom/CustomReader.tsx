@@ -386,7 +386,7 @@ export function CustomReader({ bookId }: { bookId: string }) {
             ) : (
               <div className="flex flex-col items-center justify-center h-full text-ink-light gap-3">
                 <span className="text-4xl opacity-30">📄</span>
-                <p className="text-sm">点击上方"提取文字"按钮</p>
+                <p className="text-sm">点击上方&ldquo;提取文字&rdquo;按钮</p>
                 <p className="text-xs">AI 会逐页识别图片中的文字内容</p>
                 <p className="text-xs text-ink-softer">识别后可编辑修正，再生成题目</p>
               </div>

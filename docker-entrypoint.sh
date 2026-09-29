@@ -45,6 +45,11 @@ HTML_ROOT="/usr/share/nginx/html"
 SKIP_DOWNLOAD="${SKIP_DOWNLOAD:-false}"
 STATUS_FILE="$HTML_ROOT/assets-status.json"
 
+# 资源版本号：取 RELEASE_URL 的最后一段（如 v1.2.0-assets）。
+# 启动重启时会被后台下载逻辑覆写为"当前生效源"解析出的实际版本。
+_ASSET_BASE="${RELEASE_URL%/}"
+ASSET_VERSION="${_ASSET_BASE##*/}"
+
 # 代理设置（curl 会自动读取 HTTP_PROXY / HTTPS_PROXY 环境变量）
 if [ -n "$HTTP_PROXY" ] && [ -z "$HTTPS_PROXY" ]; then
     export HTTPS_PROXY="$HTTP_PROXY"
@@ -91,6 +96,7 @@ write_status() {
   "storiesDownloaded": "${STORIES_DOWNLOADED:-}",
   "storiesTotal": "${STORIES_TOTAL:-}",
   "storiesError": "${STORIES_ERROR:-}",
+  "assetVersion": "${ASSET_VERSION:-}",
   "proxy": "${PROXY_DISPLAY}",
   "updatedAt": "$(date -Iseconds)"
 }
@@ -100,9 +106,46 @@ EOF
 # 统计目录文件数（递归）
 count_files() {
     if [ -d "$1" ]; then
-        find "$1" -type f 2>/dev/null | wc -l | tr -d ' '
+        # 排除版本标记文件，避免把 .resource-version 算进资源数量
+        find "$1" -type f ! -name '.resource-version' 2>/dev/null | wc -l | tr -d ' '
     else
         echo 0
+    fi
+}
+
+# ---- 资源版本校验：启动时若检测到新版本 tag，自动清空并重新下载覆盖 ----
+# 以资源包 release 的最后一个路径段作为版本号（如 v1.2.0-assets）。
+# 每个已下载的资源目录内写一个 `.resource-version` 标记，作为"当前已装版本"。
+resolve_desired_version() {
+    _url="$1"
+    _base="${_url%/}"
+    echo "${_base##*/}"
+}
+
+# 该目录是否需要（重新）下载：
+#   - 目录不存在 / 为空 → 需要
+#   - 目录内有 .resource-version 且等于期望版本 → 不需要（已就绪、版本最新）
+#   - 其余情况（无标记，或标记版本 != 期望版本）→ 需要（升级覆盖）
+should_download() {
+    _dir="$1"
+    if [ ! -d "$_dir" ] || [ -z "$(ls -A "$_dir" 2>/dev/null)" ]; then
+        return 0
+    fi
+    if [ -f "$_dir/.resource-version" ]; then
+        _cur="$(cat "$_dir/.resource-version" 2>/dev/null)"
+        if [ -n "$_cur" ] && [ "$_cur" = "$DESIRED_VERSION" ]; then
+            return 1
+        fi
+    fi
+    return 0
+}
+
+# 成功后写入已装版本标记
+mark_version() {
+    _dir="$1"
+    mkdir -p "$_dir"
+    if [ -n "$DESIRED_VERSION" ]; then
+        printf '%s' "$DESIRED_VERSION" > "$_dir/.resource-version"
     fi
 }
 
@@ -470,11 +513,21 @@ start_background_download() {
             exit 0
         fi
 
+        # ---- 解析当前生效的下载源与资源版本号（一次性解析，保持一致性）----
+        DL_URL="$(get_release_url)"
+        DESIRED_VERSION="$(resolve_desired_version "$DL_URL")"
+        ASSET_VERSION="$DESIRED_VERSION"
+        echo "=== 资源包版本：${DESIRED_VERSION:-<none>}，源：$DL_URL ==="
+
         # ---- 下载单个资源的封装 ----
+        # 采用"先校验版本再下载"策略：目录为空、或 .resource-version 标记 != 期望版本
+        # 时，清空目录后重新下载并覆盖；版本一致则跳过（升级后不需要重复下载）。
         do_download_audio() {
-            if [ ! -d "$HTML_ROOT/audio" ] || [ -z "$(ls -A "$HTML_ROOT/audio" 2>/dev/null)" ]; then
-                download_and_serve \
-                    "$(get_release_url)/audio.tar.gz" \
+            if should_download "$HTML_ROOT/audio"; then
+                rm -rf "$HTML_ROOT/audio"
+                mkdir -p "$HTML_ROOT/audio"
+                if download_and_serve \
+                    "$DL_URL/audio.tar.gz" \
                     /tmp/audio.tar.gz \
                     "audio" \
                     extract_tar_gz \
@@ -485,7 +538,10 @@ start_background_download() {
                     AUDIO_PERCENT \
                     AUDIO_DOWNLOADED \
                     AUDIO_TOTAL \
-                    AUDIO_ERROR
+                    AUDIO_ERROR; then
+                    mark_version "$HTML_ROOT/audio"
+                fi
+                write_status
             else
                 AUDIO_STATUS="ready"
                 AUDIO_PERCENT=100
@@ -494,9 +550,11 @@ start_background_download() {
         }
 
         do_download_pages() {
-            if [ ! -d "$HTML_ROOT/textbook-pages" ] || [ -z "$(ls -A "$HTML_ROOT/textbook-pages" 2>/dev/null)" ]; then
-                download_and_serve \
-                    "$(get_release_url)/textbook-pages.zip" \
+            if should_download "$HTML_ROOT/textbook-pages"; then
+                rm -rf "$HTML_ROOT/textbook-pages"
+                mkdir -p "$HTML_ROOT/textbook-pages"
+                if download_and_serve \
+                    "$DL_URL/textbook-pages.zip" \
                     /tmp/textbook-pages.zip \
                     "pages" \
                     extract_zip \
@@ -507,7 +565,10 @@ start_background_download() {
                     PAGES_PERCENT \
                     PAGES_DOWNLOADED \
                     PAGES_TOTAL \
-                    PAGES_ERROR
+                    PAGES_ERROR; then
+                    mark_version "$HTML_ROOT/textbook-pages"
+                fi
+                write_status
             else
                 PAGES_STATUS="ready"
                 PAGES_PERCENT=100
@@ -516,9 +577,11 @@ start_background_download() {
         }
 
         do_download_stories() {
-            if [ ! -d "$HTML_ROOT/story-images" ] || [ -z "$(ls -A "$HTML_ROOT/story-images" 2>/dev/null)" ]; then
-                download_and_serve \
-                    "$(get_release_url)/story-images.zip" \
+            if should_download "$HTML_ROOT/story-images"; then
+                rm -rf "$HTML_ROOT/story-images"
+                mkdir -p "$HTML_ROOT/story-images"
+                if download_and_serve \
+                    "$DL_URL/story-images.zip" \
                     /tmp/story-images.zip \
                     "stories" \
                     extract_zip \
@@ -529,7 +592,10 @@ start_background_download() {
                     STORIES_PERCENT \
                     STORIES_DOWNLOADED \
                     STORIES_TOTAL \
-                    STORIES_ERROR
+                    STORIES_ERROR; then
+                    mark_version "$HTML_ROOT/story-images"
+                fi
+                write_status
             else
                 STORIES_STATUS="ready"
                 STORIES_PERCENT=100
