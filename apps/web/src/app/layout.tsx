@@ -18,12 +18,12 @@ const nunito = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "悠悠学堂",
+  title: "NONO学堂",
   description: "全科免费，人人可学的小学AI学习平台",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
-    title: "悠悠学堂",
+    title: "NONO学堂",
     statusBarStyle: "default",
   },
   icons: {

@@ -105,10 +105,10 @@ export function SideNav({ leftSlot }: SideNavProps = {}) {
             haptic("light");
           }}
           className="flex-1 min-w-0 px-2"
-          aria-label="悠悠学堂 · 回到首页"
+          aria-label="NONO学堂 · 回到首页"
         >
           <span className="hidden lg:inline text-4xl font-black text-primary tracking-tightest leading-none">
-            悠悠学堂
+            NONO学堂
           </span>
           <span className="lg:hidden inline-flex items-center justify-center w-10 h-10 rounded-2xl bg-primary/10 text-primary font-extrabold text-lg">
             聪

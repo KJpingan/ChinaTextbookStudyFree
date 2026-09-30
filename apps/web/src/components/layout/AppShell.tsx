@@ -49,7 +49,7 @@ export function AppShell({ children, centerMaxWidth = 1920 }: AppShellProps) {
       }
     >
       <aside className="hidden md:flex md:flex-col md:sticky md:top-6 md:self-start md:h-[calc(100vh-3rem)] md:overflow-y-auto md:pb-6">
-        {/* 把 SideRail 渲染交给 SideNav 内部，确保它出现在「悠悠学堂」logo 下方、
+        {/* 把 SideRail 渲染交给 SideNav 内部，确保它出现在「NONO学堂」logo 下方、
             导航项上方的固定位置（具体位置由 SideNav.tsx 决定）。 */}
         <SideNav leftSlot={showLeftSlot ? <SideRail /> : null} />
       </aside>
